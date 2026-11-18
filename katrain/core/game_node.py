@@ -54,6 +54,12 @@ class GameNode(BaseGoNode["GameNode"]):
         self.analysis_from_sgf = None
         self.clear_analysis()
 
+    def promote_to_main_child(self):
+        """Make this node its parent's first child without changing earlier branch choices."""
+        if self.parent and self.parent.children[0] is not self:
+            self.parent.children.remove(self)
+            self.parent.children.insert(0, self)
+
     def add_shortcut(self, to_node):  # collapses the branch between them
         nodes = [to_node]
         while nodes[-1].parent and nodes[-1] != self:  # ensure on path

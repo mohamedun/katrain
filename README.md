@@ -35,6 +35,11 @@ balance, not a rules-based score or a territory count excluding stones. Press
 whole-board selections work too. This measurement does not change the engine's
 region of interest: **G** retains its original search-region behavior with **Y** off.
 
+The move-tree context menu also adds **Make Main Child** (**Shift+PageUp**). It
+makes the selected node the first child of its immediate parent, preserving all
+earlier branch choices and all variations. **PageUp** still promotes the whole
+path to the main variation. The local ordering is preserved when saving an SGF.
+
 To build this fork on macOS, install the development dependencies with `uv sync`,
 then run `bash scripts/build_macos_territory.sh`. The script reuses the native
 KataGo engine from an official KaTrain installation in `/Applications` (or from

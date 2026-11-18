@@ -806,7 +806,10 @@ class KaTrainGui(Screen, KaTrainBase):
         elif keycode[1] == Theme.KEY_NAV_GAME_END:
             self("redo", 9999)
         elif keycode[1] == Theme.KEY_MOVE_TREE_MAKE_SELECTED_NODE_MAIN_BRANCH:
-            self.controls.move_tree.make_selected_node_main_branch()
+            if shift_pressed:
+                self.controls.move_tree.make_selected_node_main_child()
+            else:
+                self.controls.move_tree.make_selected_node_main_branch()
         elif keycode[1] == Theme.KEY_NAV_MISTAKE and not ctrl_pressed:
             self("find-mistake", "undo" if shift_pressed else "redo")
         elif keycode[1] == Theme.KEY_MOVE_TREE_DELETE_SELECTED_NODE and ctrl_pressed:
