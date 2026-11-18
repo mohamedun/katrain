@@ -56,7 +56,7 @@ datas = [
 binaries = kivy_deps.get('binaries', [])
 if is_macos:
     # Add macOS-specific KataGo binary if it exists
-    katago_osx_path = f'{base_path}/KataGo/katago-osx'
+    katago_osx_path = os.environ.get('KATRAIN_KATAGO_BINARY', f'{base_path}/KataGo/katago-osx')
     if os.path.exists(katago_osx_path):
         binaries.append((katago_osx_path, 'katrain/KataGo/'))
     else:
@@ -177,6 +177,7 @@ if is_windows:
 
 else:
     # macOS and Linux build
+    app_name = os.environ.get('KATRAIN_APP_NAME', 'KaTrain')
     pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
     exe = EXE(
@@ -184,7 +185,7 @@ else:
         a.scripts,
         [],
         exclude_binaries=True,
-        name='KaTrain',
+        name=app_name,
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -205,7 +206,7 @@ else:
         strip=False,
         upx=True,
         upx_exclude=[],
-        name='KaTrain',
+        name=app_name,
     )
 
     # macOS app bundle
@@ -215,9 +216,9 @@ else:
 
         app = BUNDLE(
             coll,
-            name='KaTrain.app',
+            name=f'{app_name}.app',
             icon=f'{base_path}/img/icon.icns',
-            bundle_identifier='org.katrain.KaTrain',
+            bundle_identifier=os.environ.get('KATRAIN_BUNDLE_ID', 'org.katrain.KaTrain'),
             version=app_version,
             info_plist={
                 'NSHighResolutionCapable': 'True',

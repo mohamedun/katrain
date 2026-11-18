@@ -51,6 +51,7 @@ class BadukPanWidget(Widget):
         self.selecting_region_of_interest = False
         self.region_of_interest = []
         self.draw_coords_enabled = True
+        self.show_ownership_values = False
 
         self.active_pv_moves = []
         self.animating_pv = None
@@ -74,6 +75,12 @@ class BadukPanWidget(Widget):
 
     def get_enable_coordinates(self):
         return self.draw_coords_enabled
+
+    def toggle_ownership_values(self):
+        self.show_ownership_values = not self.show_ownership_values
+        self.set_animating_pv(None, None)
+        self.redraw_board_contents_trigger()
+        return self.show_ownership_values
 
     # stone placement functions
     def _find_closest(self, pos_x, pos_y):
@@ -706,7 +713,7 @@ class BadukPanWidget(Widget):
 
             pass_btn = katrain.board_controls.pass_btn
             pass_btn.canvas.after.clear()
-            if katrain.analysis_controls.policy.active and policy:
+            if katrain.analysis_controls.policy.active and policy and not self.show_ownership_values:
                 policy_grid = var_to_grid(policy, (board_size_x, board_size_y))
                 best_move_policy = max(*policy)
                 colors = Theme.EVAL_COLORS[self.trainer_config["theme"]]
@@ -768,6 +775,36 @@ class BadukPanWidget(Widget):
             self.draw_territory_marks(grid, loss_color)
         else:
             self.draw_territory_color(grid, loss_color)
+
+    def draw_ownership_values(self):
+        """Label every intersection with current-position ownership, from Black's perspective."""
+        board_size = self.katrain.game.board_size
+        ownership = self.katrain.game.current_node.ownership
+        # Unlike the heatmap, numeric labels must never fall back to a previous position.
+        if ownership is None or len(ownership) != board_size[0] * board_size[1]:
+            return
+        grid = var_to_grid(ownership, board_size)
+        badge_width, badge_height = self.grid_size * 0.94, self.grid_size * 0.48
+        for y, row in enumerate(grid):
+            for x, value in enumerate(row):
+                if not math.isfinite(value):
+                    continue
+                value = round(value, 2)
+                owner, other = ("B", "W") if value >= 0 else ("W", "B")
+                pos = self.gridpos[y][x]
+                Color(*(Theme.STONE_COLORS[owner] if value else Theme.APPROX_BOARD_COLOR))
+                Rectangle(
+                    pos=(pos[0] - badge_width / 2, pos[1] - badge_height / 2),
+                    size=(badge_width, badge_height),
+                )
+                Color(*(Theme.STONE_COLORS[other] if value else Theme.LINE_COLOR))
+                draw_text(
+                    pos=pos,
+                    text=f"{value:+.2f}" if value else "0.00",
+                    font_name="Roboto",
+                    font_size=self.grid_size * 0.27,
+                    halign="center",
+                )
 
     def draw_territory_marks(self, grid, loss_color=None):
         board_size_x, board_size_y = self.katrain.game.board_size
@@ -904,6 +941,16 @@ class BadukPanWidget(Widget):
             self.canvas.after.clear()
 
             self.active_pv_moves = []
+            if self.show_ownership_values:
+                # Keep move suggestions and PV previews from covering the numeric labels.
+                self.draw_ownership_values()
+                if game_ended:
+                    katrain.controls.timer.paused = True
+                if self.selecting_region_of_interest and len(self.region_of_interest) == 4:
+                    self.draw_roi_box(self.region_of_interest, width=dp(2))
+                elif getattr(katrain.game, "region_of_interest", None):
+                    self.draw_roi_box(katrain.game.region_of_interest, width=dp(1.25))
+                return
             # hints or PV
             hint_moves = []
             if (

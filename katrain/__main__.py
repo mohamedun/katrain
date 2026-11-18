@@ -776,6 +776,15 @@ class KaTrainGui(Screen, KaTrainBase):
             self.toggle_move_num()
         elif keycode[1] == Theme.KEY_TOGGLE_COORDINATES:
             self.board_gui.toggle_coordinates()
+        elif keycode[1] == Theme.KEY_TOGGLE_OWNERSHIP_VALUES and not ctrl_pressed:
+            enabled = self.board_gui.toggle_ownership_values()
+            if enabled:
+                self.controls.set_status(
+                    "Territory values (Y): +1.00 Black, -1.00 White, 0.00 neutral. Available after analysis.",
+                    STATUS_INFO,
+                )
+            else:
+                self.controls.set_status("Territory values hidden.", STATUS_INFO)
         elif keycode[1] in Theme.KEY_PAUSE_TIMER and not ctrl_pressed:
             self.controls.timer.paused = not self.controls.timer.paused
         elif keycode[1] in Theme.KEY_ZEN:

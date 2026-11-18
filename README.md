@@ -15,6 +15,21 @@ KaTrain is a tool for analyzing games and playing go with AI feedback from KataG
 
 ## Manual
 
+This fork adds **Y** to toggle numeric expected ownership at every intersection,
+including occupied intersections. Values are shown to two decimal places from
+Black's perspective: **+1.00** is Black ownership, **-1.00** is White ownership,
+and **0.00** is neutral or uncertain. These are KataGo's ownership estimates,
+not policy probabilities or a final territory count. Labels appear once analysis
+for the current position is available; an earlier position's values are never reused.
+Move suggestions and variation previews are hidden while numbers are visible.
+Press **Y** again to restore them. **T** still independently toggles the heatmap.
+
+To build this fork on macOS, install the development dependencies with `uv sync`,
+then run `bash scripts/build_macos_territory.sh`. The script reuses the native
+KataGo engine from an official KaTrain installation in `/Applications` (or from
+`KATRAIN_KATAGO_BINARY`) and bundles its libraries into `dist/KaTrain Territory.app`.
+The resulting app runs independently and can be installed alongside KaTrain.
+
 <table>
 <td>
 
