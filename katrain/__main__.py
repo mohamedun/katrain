@@ -379,6 +379,7 @@ class KaTrainGui(Screen, KaTrainBase):
             self.play_mode.switch_ui_mode()  # for new game, go to play, for loaded, analyze
         self.board_gui.animating_pv = None
         self.board_gui.reset_rotation()
+        self.board_gui.clear_ownership_region()
         self.engine.on_new_game()  # clear queries
         self.game = Game(
             self,
@@ -477,6 +478,9 @@ class KaTrainGui(Screen, KaTrainBase):
         self.game.selfplay(int(until_move) if isinstance(until_move, float) else until_move, target_b_advantage)
 
     def _do_select_box(self):
+        if self.board_gui.show_ownership_values:
+            self.board_gui.start_ownership_selection()
+            return
         self.controls.set_status(i18n._("analysis:region:start"), STATUS_INFO)
         self.board_gui.selecting_region_of_interest = True
 
@@ -770,6 +774,10 @@ class KaTrainGui(Screen, KaTrainBase):
                 self.engine.pause()
                 return
 
+        if keycode[1] == Theme.KEY_STOP_ANALYSIS and self.board_gui.show_ownership_values:
+            if self.board_gui.clear_ownership_region():
+                return
+
         if keycode[1] == Theme.KEY_TOGGLE_CONTINUOUS_ANALYSIS:
             self.toggle_continuous_analysis(quiet=shift_pressed)
         elif keycode[1] == Theme.KEY_TOGGLE_MOVENUM:
@@ -780,7 +788,7 @@ class KaTrainGui(Screen, KaTrainBase):
             enabled = self.board_gui.toggle_ownership_values()
             if enabled:
                 self.controls.set_status(
-                    "Territory values (Y): +1.00 Black, -1.00 White, 0.00 neutral. Available after analysis.",
+                    "Territory values (Y): +1.00 Black, -1.00 White. G: select an area to sum.",
                     STATUS_INFO,
                 )
             else:

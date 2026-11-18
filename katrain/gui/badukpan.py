@@ -10,7 +10,7 @@ from kivy.graphics.context_instructions import Color, PopMatrix, PushMatrix, Rot
 from kivy.graphics.texture import Texture
 from kivy.graphics.vertex_instructions import Ellipse, Line, Rectangle
 from kivy.metrics import dp
-from kivy.properties import BooleanProperty, ListProperty, NumericProperty, ObjectProperty
+from kivy.properties import BooleanProperty, ListProperty, NumericProperty, ObjectProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.dropdown import DropDown
 from kivy.uix.floatlayout import FloatLayout
@@ -31,13 +31,22 @@ from katrain.core.constants import (
 )
 from katrain.core.game import Move
 from katrain.core.lang import i18n
-from katrain.core.utils import evaluation_class, format_visits, json_truncate_arrays, var_to_grid
+from katrain.core.utils import (
+    evaluation_class,
+    format_visits,
+    json_truncate_arrays,
+    ownership_sum_in_region,
+    var_to_grid,
+)
 from katrain.gui.popups import GameReportPopup, I18NPopup, ReAnalyzeGamePopup, TsumegoFramePopup
 from katrain.gui.theme import Theme
 from katrain.gui.widgets.drawing import cached_texture, draw_circle, draw_text
 
 
 class BadukPanWidget(Widget):
+    show_ownership_values = BooleanProperty(False)
+    ownership_region_text = StringProperty("G: drag a rectangle to sum ownership. Esc: clear.")
+
     def __init__(self, **kwargs):
         super(BadukPanWidget, self).__init__(**kwargs)
         self.trainer_config = {}
@@ -51,7 +60,10 @@ class BadukPanWidget(Widget):
         self.selecting_region_of_interest = False
         self.region_of_interest = []
         self.draw_coords_enabled = True
-        self.show_ownership_values = False
+        self.selecting_ownership_region = False
+        self.ownership_region = []
+        self.ownership_selection = []
+        self._ownership_touch = None
 
         self.active_pv_moves = []
         self.animating_pv = None
@@ -78,9 +90,29 @@ class BadukPanWidget(Widget):
 
     def toggle_ownership_values(self):
         self.show_ownership_values = not self.show_ownership_values
+        self.selecting_ownership_region = False
+        self.ownership_selection = []
         self.set_animating_pv(None, None)
         self.redraw_board_contents_trigger()
         return self.show_ownership_values
+
+    def start_ownership_selection(self):
+        self.selecting_region_of_interest = False
+        self.region_of_interest = []
+        self.selecting_ownership_region = True
+        self.ownership_selection = []
+        self.ghost_stone = None
+        self.set_animating_pv(None, None)
+        self.redraw_hover_contents_trigger()
+
+    def clear_ownership_region(self):
+        had_selection = bool(self.ownership_region or self.ownership_selection or self.selecting_ownership_region)
+        self.selecting_ownership_region = False
+        self.ownership_selection = []
+        self.ownership_region = []
+        self.ghost_stone = None
+        self.redraw_hover_contents_trigger()
+        return had_selection
 
     # stone placement functions
     def _find_closest(self, pos_x, pos_y):
@@ -113,14 +145,24 @@ class BadukPanWidget(Widget):
         if not self.initial_gridpos_x:
             return
         _, xp, _, yp = self._find_closest(touch.x, touch.y)
-        if second_point and len(self.region_of_interest) == 4:
-            self.region_of_interest[1] = xp
-            self.region_of_interest[3] = yp
+        field = "ownership_selection" if self.selecting_ownership_region else "region_of_interest"
+        region = getattr(self, field)
+        if second_point and len(region) == 4:
+            region[1] = xp
+            region[3] = yp
         else:
-            self.region_of_interest = [xp, xp, yp, yp]
+            setattr(self, field, [xp, xp, yp, yp])
         self.redraw_hover_contents_trigger()
 
     def on_touch_down(self, touch):
+        if self.selecting_ownership_region:
+            if self.collide_point(*touch.pos) and ("button" not in touch.profile or touch.button == "left"):
+                if self._ownership_touch is None:
+                    touch.grab(self)
+                    self._ownership_touch = touch
+                    self.update_box_selection(touch, second_point=False)
+                return True
+            return
         animating_pv = self.animating_pv
         if "button" in touch.profile:
             if touch.button == "left":
@@ -141,6 +183,12 @@ class BadukPanWidget(Widget):
             self.set_animating_pv(None, None)  # any click/touch kills PV from label/move
 
     def on_touch_move(self, touch):
+        if touch is self._ownership_touch:
+            if self.selecting_ownership_region:
+                self.update_box_selection(touch)
+            return True
+        if self.selecting_ownership_region:
+            return
         if "button" in touch.profile and touch.button != "left":
             return
         if self.selecting_region_of_interest:
@@ -174,6 +222,21 @@ class BadukPanWidget(Widget):
             self.last_mouse_pos = pos
 
     def on_touch_up(self, touch):
+        if touch is self._ownership_touch:
+            if touch.grab_current is not self:
+                return True  # Wait for Kivy's grabbed event, rather than its normal dispatch.
+            touch.ungrab(self)
+            self._ownership_touch = None
+            if self.selecting_ownership_region:
+                self.update_box_selection(touch)
+                self.ownership_region = self.ownership_selection[:]
+            self.selecting_ownership_region = False
+            self.ownership_selection = []
+            self.ghost_stone = None
+            self.redraw_hover_contents_trigger()
+            return True
+        if self.selecting_ownership_region:
+            return
         if ("button" in touch.profile and touch.button != "left") or not self.initial_gridpos_x:
             return
         katrain = self.katrain
@@ -784,27 +847,54 @@ class BadukPanWidget(Widget):
         if ownership is None or len(ownership) != board_size[0] * board_size[1]:
             return
         grid = var_to_grid(ownership, board_size)
-        badge_width, badge_height = self.grid_size * 0.94, self.grid_size * 0.48
+        stones = {move.coords: move.player for move in self.katrain.game.stones}
         for y, row in enumerate(grid):
             for x, value in enumerate(row):
                 if not math.isfinite(value):
                     continue
                 value = round(value, 2)
-                owner, other = ("B", "W") if value >= 0 else ("W", "B")
                 pos = self.gridpos[y][x]
-                Color(*(Theme.STONE_COLORS[owner] if value else Theme.APPROX_BOARD_COLOR))
-                Rectangle(
-                    pos=(pos[0] - badge_width / 2, pos[1] - badge_height / 2),
-                    size=(badge_width, badge_height),
-                )
-                Color(*(Theme.STONE_COLORS[other] if value else Theme.LINE_COLOR))
+                player = stones.get((x, y))
+                Color(1, 1, 1, 1)
                 draw_text(
                     pos=pos,
                     text=f"{value:+.2f}" if value else "0.00",
                     font_name="Roboto",
-                    font_size=self.grid_size * 0.27,
+                    font_size=self.grid_size / 3.5,
                     halign="center",
+                    color=tuple(Theme.PV_TEXT_COLORS[player] if player else Theme.HINT_TEXT_COLOR),
+                    outline_width=1,
+                    outline_color=tuple(Theme.STONE_COLORS[player] if player else Theme.APPROX_BOARD_COLOR),
                 )
+
+    def draw_ownership_region(self):
+        region = self.ownership_selection if self.selecting_ownership_region else self.ownership_region
+        if len(region) != 4:
+            self.ownership_region_text = (
+                "Drag a rectangle to sum ownership. Esc: cancel."
+                if self.selecting_ownership_region
+                else "G: drag a rectangle to sum ownership. Esc: clear."
+            )
+            return
+        x1, x2, y1, y2 = region
+        xmin, xmax = sorted((x1, x2))
+        ymin, ymax = sorted((y1, y2))
+        board_size = self.katrain.game.board_size
+        if not (0 <= xmin <= xmax < board_size[0] and 0 <= ymin <= ymax < board_size[1]):
+            self.clear_ownership_region()
+            return
+        self.draw_roi_box(region, width=dp(2), color=Theme.SCORE_COLOR)
+        first = Move((xmin, ymin)).gtp()
+        last = Move((xmax, ymax)).gtp()
+        label = first if first == last else f"{first}–{last}"
+        count = (xmax - xmin + 1) * (ymax - ymin + 1)
+        total = ownership_sum_in_region(self.katrain.game.current_node.ownership, board_size, region)
+        if total is None:
+            self.ownership_region_text = f"{label}: waiting for current-position analysis"
+        else:
+            total = round(total, 2)
+            owner = "Black" if total > 0 else "White" if total < 0 else "neutral"
+            self.ownership_region_text = f"{label}: sum {total:+.2f} ({owner}) · {count} intersections · Esc: clear"
 
     def draw_territory_marks(self, grid, loss_color=None):
         board_size_x, board_size_y = self.katrain.game.board_size
@@ -900,12 +990,12 @@ class BadukPanWidget(Widget):
 
         PopMatrix()
 
-    def draw_roi_box(self, region_of_interest, width: float = 2):
+    def draw_roi_box(self, region_of_interest, width: float = 2, color=None):
         x1, x2, y1, y2 = region_of_interest
         x_start, y_start = self.gridpos[y1][x1]
         x_end, y_end = self.gridpos[y2][x2]
 
-        Color(*Theme.REGION_BORDER_COLOR)
+        Color(*(color if color is not None else Theme.REGION_BORDER_COLOR))
         Line(
             rectangle=(
                 min(x_start, x_end) - self.grid_size / 3,
@@ -929,6 +1019,8 @@ class BadukPanWidget(Widget):
     def draw_hover_contents(self, *_args):
         ghost_alpha = Theme.GHOST_ALPHA
         katrain = self.katrain
+        if not (katrain and katrain.game and self.gridpos):
+            return
         game_ended = katrain.game.end_result
         current_node = katrain.game.current_node
         next_player = current_node.next_player
@@ -950,6 +1042,7 @@ class BadukPanWidget(Widget):
                     self.draw_roi_box(self.region_of_interest, width=dp(2))
                 elif getattr(katrain.game, "region_of_interest", None):
                     self.draw_roi_box(katrain.game.region_of_interest, width=dp(1.25))
+                self.draw_ownership_region()
                 return
             # hints or PV
             hint_moves = []

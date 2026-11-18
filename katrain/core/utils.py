@@ -20,6 +20,24 @@ def var_to_grid(array_var: List[T], size: Tuple[int, int]) -> List[List[T]]:
     return grid
 
 
+def ownership_sum_in_region(ownership, size, region):
+    """Sum unrounded ownership over an inclusive rectangle in board coordinates.
+
+    KataGo arrays start at the top left; board coordinates start at the bottom
+    left. Return None until complete, finite current-position data is available.
+    """
+    width, height = size
+    if ownership is None or len(ownership) != width * height or len(region) != 4:
+        return None
+    x1, x2, y1, y2 = region
+    xmin, xmax = sorted((x1, x2))
+    ymin, ymax = sorted((y1, y2))
+    if not (0 <= xmin <= xmax < width and 0 <= ymin <= ymax < height):
+        return None
+    values = [ownership[(height - 1 - y) * width + x] for y in range(ymin, ymax + 1) for x in range(xmin, xmax + 1)]
+    return math.fsum(values) if all(math.isfinite(value) for value in values) else None
+
+
 def evaluation_class(points_lost: float, eval_thresholds: List[float]):
     i = 0
     while i < len(eval_thresholds) - 1 and points_lost < eval_thresholds[i]:

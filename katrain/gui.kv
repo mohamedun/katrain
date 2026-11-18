@@ -1157,6 +1157,14 @@
                             opacity: 0 if root.zen > 0 else 1
                         BadukPanWidget:
                             id: board_gui
+                        Label:
+                            text: board_gui.ownership_region_text
+                            font_name: 'Roboto'
+                            font_size: sp(16)
+                            color: Theme.TEXT_COLOR
+                            size_hint_y: None
+                            height: sp(30) if board_gui.show_ownership_values else 0
+                            opacity: 1 if board_gui.show_ownership_values else 0
                         BadukPanControls:
                             id: board_controls
                             size_hint_y: None

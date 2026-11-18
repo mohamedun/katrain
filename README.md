@@ -24,6 +24,17 @@ for the current position is available; an earlier position's values are never re
 Move suggestions and variation previews are hidden while numbers are visible.
 Press **Y** again to restore them. **T** still independently toggles the heatmap.
 
+The values use KaTrain's regular board text, with contrasting text on stones and
+a subtle outline for readability. There are no filled boxes behind the numbers.
+With numbers visible, press **G**, then drag a rectangle to see its ownership sum
+below the board, updating as you drag and as analysis improves. The sum includes
+every intersection in the rectangle, including stones, uses the unrounded engine
+values, and is positive for Black and negative for White. It is a signed ownership
+balance, not a rules-based score or a territory count excluding stones. Press
+**Esc** to clear the rectangle; press **G** to draw another. Single-point and
+whole-board selections work too. This measurement does not change the engine's
+region of interest: **G** retains its original search-region behavior with **Y** off.
+
 To build this fork on macOS, install the development dependencies with `uv sync`,
 then run `bash scripts/build_macos_territory.sh`. The script reuses the native
 KataGo engine from an official KaTrain installation in `/Applications` (or from
